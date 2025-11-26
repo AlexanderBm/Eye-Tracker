@@ -64,3 +64,42 @@ Run the inference script on your Mac:
 
 This will open two windows showing the camera feeds with inference overlays.
 Data (video and CSV) will be saved to `data/collected_data/session_<TIMESTAMP>/`.
+
+## 4. Usage Reference
+
+The core inference script is `src/inference_pipe.py`. It can be run manually for advanced usage or debugging.
+
+### Command-Line Arguments
+
+| Argument | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--eye` | int | **Required** | Eye ID (0 for Left, 1 for Right). |
+| `--input_video` | str | None | Path to an MP4 file for offline processing. If omitted, reads from stdin (live stream). |
+| `--model` | str | `models/human_conf0.pt` | Path to the model weights file. |
+| `--data_dir` | str | `data/collected_data` | Directory where output data (CSV, video) will be saved. |
+| `--width` | int | 400 | Width of the input video frame. |
+| `--height` | int | 400 | Height of the input video frame. |
+| `--flip` | int | None | Flip mode: `0` = vertical, `1` = horizontal. |
+| `--title` | str | "Stream" | Window title for the display. |
+| `--headless` | flag | False | Run without GUI display. Useful for offline processing or server-side execution. |
+
+### Examples
+
+**1. Live Stream (Standard Usage)**
+Usually run via `scripts/run_inference.sh`, but can be run manually if piping from GStreamer:
+```bash
+# (GStreamer pipeline) | python src/inference_pipe.py --eye 0
+```
+
+**2. Offline Video Processing**
+Process a pre-recorded video file:
+```bash
+python src/inference_pipe.py --input_video path/to/video --data_dir path/to/processsed/output --eye 0/1 --headless
+```
+
+**3. Custom Model**
+Use a different model file:
+```bash
+python src/inference_pipe.py --model models/new_model.pt
+```
+

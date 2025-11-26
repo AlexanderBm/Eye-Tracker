@@ -64,6 +64,8 @@ def main():
     parser.add_argument("--flip", type=int, default=None, help="Flip: 0=vertical, 1=horizontal")
     parser.add_argument("--eye", type=int, required=True, help="Eye ID: 0 or 1")
     parser.add_argument("--data_dir", type=str, default="data/collected_data", help="Directory to save data")
+    parser.add_argument("--input_video", type=str, default=None, help="Path to input video file (offline mode)")
+    parser.add_argument("--headless", action="store_true", help="Run without GUI display")
     args = parser.parse_args()
 
     # Setup data collection
@@ -126,7 +128,8 @@ def main():
         print(f"Failed to initialize model: {e}")
         model = None
 
-    print(f"Reading raw video {width}x{height} from stdin...")
+    if not args.input_video:
+        print(f"Reading raw video {width}x{height} from stdin...")
     
     # Threaded frame reader to prevent blocking
     import queue
@@ -135,19 +138,52 @@ def main():
     frame_queue = queue.Queue(maxsize=1)
     running = True
     
+    # Video capture for offline mode
+    cap = None
+    if args.input_video:
+        if not os.path.exists(args.input_video):
+            print(f"Error: Input video not found at {args.input_video}")
+            return
+        cap = cv2.VideoCapture(args.input_video)
+        print(f"Processing video file: {args.input_video}")
+        
+        # Update width/height from video if not specified (optional, but good practice)
+        # For now, we stick to args or assume video matches
+    
     def read_frames():
         while running:
             try:
-                raw_data = sys.stdin.buffer.read(frame_size)
-                if not raw_data:
-                    break
-                # Only keep the latest frame
-                if frame_queue.full():
-                    try:
-                        frame_queue.get_nowait()
-                    except queue.Empty:
-                        pass
-                frame_queue.put(raw_data)
+                if args.input_video:
+                    ret, frame_read = cap.read()
+                    if not ret:
+                        break
+                    # Resize if needed to match expected dimensions
+                    if frame_read.shape[1] != width or frame_read.shape[0] != height:
+                        frame_read = cv2.resize(frame_read, (width, height))
+                    
+                    # Simulate real-time if needed, or just process as fast as possible
+                    # For offline, we might want to process every frame, so we use a larger queue or blocking put
+                    # But to keep logic similar, we'll just put it in the queue
+                    
+                    # For offline processing, we want to ensure we process EVERY frame, 
+                    # so we should probably not drop frames like in live mode.
+                    # However, the main loop logic drops frames if queue is full.
+                    # Let's modify the queue logic slightly for offline.
+                    
+                    frame_queue.put(frame_read) # Blocking put for offline to ensure no frame drop? 
+                    # If we block here, the main loop must consume fast enough.
+                    
+                else:
+                    raw_data = sys.stdin.buffer.read(frame_size)
+                    if not raw_data:
+                        break
+                    # Only keep the latest frame
+                    if frame_queue.full():
+                        try:
+                            frame_queue.get_nowait()
+                        except queue.Empty:
+                            pass
+                    frame_queue.put(raw_data)
             except Exception:
                 break
     
@@ -163,14 +199,19 @@ def main():
     while True:
         try:
             # Get latest frame with short timeout to check for exit
-            raw_data = frame_queue.get(timeout=0.1)
+            # For offline, we might want to wait longer
+            timeout = 1.0 if args.input_video else 0.1
+            frame_data = frame_queue.get(timeout=timeout)
         except queue.Empty:
             if not reader_thread.is_alive():
                 break
             continue
             
         # Convert to numpy array
-        frame = np.frombuffer(raw_data, dtype=np.uint8).reshape((height, width, 3)).copy()
+        if args.input_video:
+            frame = frame_data # It's already an image
+        else:
+            frame = np.frombuffer(frame_data, dtype=np.uint8).reshape((height, width, 3)).copy()
         
         # Flip if requested
         if args.flip is not None:
@@ -222,22 +263,25 @@ def main():
         cv2.putText(frame, fps_text, (10, height - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
         # Position windows side-by-side
-        window_name = args.title
-        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-        
-        # Position based on camera number
-        if "Camera 1" in args.title:
-            cv2.moveWindow(window_name, 50, 50)
-        elif "Camera 2" in args.title:
-            cv2.moveWindow(window_name, 500, 50)
+        if not args.headless:
+            window_name = args.title
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
             
-        cv2.imshow(window_name, frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            running = False
-            break
+            # Position based on camera number
+            if "Camera 1" in args.title:
+                cv2.moveWindow(window_name, 50, 50)
+            elif "Camera 2" in args.title:
+                cv2.moveWindow(window_name, 500, 50)
+                
+            cv2.imshow(window_name, frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                running = False
+                break
 
     running = False
     reader_thread.join(timeout=1.0)
+    if cap:
+        cap.release()
     if out_video_raw.isOpened():
         out_video_raw.release()
     if out_video_overlay.isOpened():
