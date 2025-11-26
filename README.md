@@ -4,6 +4,7 @@ This guide explains how to set up the Eye Tracker streaming system from scratch.
 
 ## Prerequisites
 *   **Mac (Client)**: macOS with Homebrew installed.
+*   **Windows (Client)**: Windows 10/11 with PowerShell.
 *   **Raspberry Pi (Server)**: Running Raspberry Pi OS (Debian based), connected to the same network.
 *   **Cameras**: Two Pupil Labs cameras connected to the RPi.
 
@@ -21,7 +22,25 @@ This will:
 2.  Create a Python virtual environment (`venv`).
 3.  Install required Python packages (`opencv-python`, `torch`, etc.).
 
-## 2. Server Setup (Raspberry Pi)
+## 2. Client Setup (Windows)
+
+1.  **Install GStreamer**:
+    *   Download the **MSVC 64-bit** installer (both Runtime and Development) from [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/download/).
+    *   **Important**: During installation, choose "Complete" or ensure all components are selected to get `gst-launch-1.0` in your PATH.
+
+2.  **Run Setup Script**:
+    Open PowerShell and run:
+    ```powershell
+    .\scripts\setup_client.ps1
+    ```
+
+3.  **Run Inference**:
+    ```powershell
+    .\venv\Scripts\Activate.ps1
+    python src/inference_pipe.py --eye 0
+    ```
+
+## 3. Server Setup (Raspberry Pi)
 You need to deploy the scripts to the Raspberry Pi and install dependencies.
 
 ### Option A: Automatic Deployment
@@ -42,7 +61,7 @@ ssh kimchi@192.168.1.2
 ### Option B: Manual Setup
 Copy `start_stream_sw.sh` and `setup_server.sh` to the Pi manually, then run `./setup_server.sh` on the Pi.
 
-## 3. Running the System
+## 4. Running the System
 
 ### Step 1: Start the Stream (on RPi)
 SSH into the Pi and start the stream, pointing it to your Mac's IP address:
@@ -65,7 +84,7 @@ Run the inference script on your Mac:
 This will open two windows showing the camera feeds with inference overlays.
 Data (video and CSV) will be saved to `data/collected_data/session_<TIMESTAMP>/`.
 
-## 4. Usage Reference
+## 5. Usage Reference
 
 The core inference script is `src/inference_pipe.py`. It can be run manually for advanced usage or debugging.
 
