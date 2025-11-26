@@ -1,0 +1,248 @@
+import sys
+import cv2
+import numpy as np
+import torch
+import torch.nn as nn
+import time
+import argparse
+
+# Define the model class (copied from video_client.py)
+class AzElRegressor128x128(nn.Module):
+    def __init__(self, in_ch=1):
+        super().__init__()
+        def block(c_in, c_out):
+            return nn.Sequential(
+                nn.Conv2d(c_in, c_out, 3, padding=1),
+                nn.BatchNorm2d(c_out),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(c_out, c_out, 3, padding=1),
+                nn.BatchNorm2d(c_out),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(2),
+            )
+        self.backbone = nn.Sequential(
+            block(in_ch, 32),
+            block(32, 64),
+            block(64, 128),
+        )
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Dropout(0.2),
+            nn.Linear(128, 64),
+            nn.ReLU(inplace=True),
+            nn.Linear(64, 2),
+        )
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.head(x)
+        return x
+
+def preprocess(frame, img_size=128):
+    if len(frame.shape) == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame
+    gray = cv2.resize(gray, (img_size, img_size), interpolation=cv2.INTER_AREA)
+    f = gray.astype(np.float32) / 255.0
+    m, s = f.mean(), f.std() + 1e-6
+    f = (f - m) / s
+    x = torch.from_numpy(f).unsqueeze(0)
+    return x
+
+import os
+import csv
+import datetime
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--width", type=int, default=400)
+    parser.add_argument("--height", type=int, default=400)
+    parser.add_argument("--model", type=str, default="models/human_conf0.pt")
+    parser.add_argument("--title", type=str, default="Stream")
+    parser.add_argument("--flip", type=int, default=None, help="Flip: 0=vertical, 1=horizontal")
+    parser.add_argument("--eye", type=int, required=True, help="Eye ID: 0 or 1")
+    parser.add_argument("--data_dir", type=str, default="data/collected_data", help="Directory to save data")
+    args = parser.parse_args()
+
+    # Setup data collection
+    if not os.path.exists(args.data_dir):
+        os.makedirs(args.data_dir, exist_ok=True)
+    
+    # Setup data collection
+    if not os.path.exists(args.data_dir):
+        os.makedirs(args.data_dir, exist_ok=True)
+    
+    # Filenames are simple now as they are inside a timestamped directory
+    csv_path = os.path.join(args.data_dir, f"data_eye{args.eye}.csv")
+    csv_header = ["frame_idx", "timestamp", "az", "el"]
+    
+    # Create CSV
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(csv_header)
+
+    # Initialize VideoWriter
+    # Note: MJPG is widely supported. For MP4, 'mp4v' or 'avc1' might be needed.
+    # Using 'mp4v' for compatibility.
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # Assuming 60fps as per GStreamer pipeline
+    
+    # Raw video writer
+    video_path_raw = os.path.join(args.data_dir, f"video_raw_eye{args.eye}.mp4")
+    out_video_raw = cv2.VideoWriter(video_path_raw, fourcc, 60.0, (args.width, args.height))
+    
+    # Overlay video writer
+    video_path_overlay = os.path.join(args.data_dir, f"video_overlay_eye{args.eye}.mp4")
+    out_video_overlay = cv2.VideoWriter(video_path_overlay, fourcc, 60.0, (args.width, args.height))
+
+    width = args.width
+    height = args.height
+    frame_size = width * height * 3
+
+    # Load model
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    print(f"Using device: {device}")
+    
+    try:
+        model = AzElRegressor128x128(in_ch=1).to(device)
+        # Load weights - handle different saving formats
+        try:
+            checkpoint = torch.load(args.model, map_location=device)
+            if isinstance(checkpoint, dict) and "model" in checkpoint:
+                model.load_state_dict(checkpoint["model"])
+            else:
+                model.load_state_dict(checkpoint)
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            print("Proceeding without model...")
+            model = None
+            
+        if model:
+            model.eval()
+            print("Model loaded successfully")
+    except Exception as e:
+        print(f"Failed to initialize model: {e}")
+        model = None
+
+    print(f"Reading raw video {width}x{height} from stdin...")
+    
+    # Threaded frame reader to prevent blocking
+    import queue
+    import threading
+    
+    frame_queue = queue.Queue(maxsize=1)
+    running = True
+    
+    def read_frames():
+        while running:
+            try:
+                raw_data = sys.stdin.buffer.read(frame_size)
+                if not raw_data:
+                    break
+                # Only keep the latest frame
+                if frame_queue.full():
+                    try:
+                        frame_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                frame_queue.put(raw_data)
+            except Exception:
+                break
+    
+    reader_thread = threading.Thread(target=read_frames, daemon=True)
+    reader_thread.start()
+    
+    # FPS calculation variables
+    start_time = time.time()
+    fps_frame_count = 0
+    global_frame_idx = 0
+    fps = 0.0
+    
+    while True:
+        try:
+            # Get latest frame with short timeout to check for exit
+            raw_data = frame_queue.get(timeout=0.1)
+        except queue.Empty:
+            if not reader_thread.is_alive():
+                break
+            continue
+            
+        # Convert to numpy array
+        frame = np.frombuffer(raw_data, dtype=np.uint8).reshape((height, width, 3)).copy()
+        
+        # Flip if requested
+        if args.flip is not None:
+            frame = cv2.flip(frame, args.flip)
+        
+        # Run inference
+        if model:
+            try:
+                x = preprocess(frame).unsqueeze(0).to(device)
+                with torch.no_grad():
+                    pred = model(x).cpu().numpy()[0]
+                
+                phi, theta = pred[0], pred[1]
+                
+                phi, theta = pred[0], pred[1]
+                
+                # Save data (Clean frame before overlay)
+                if out_video_raw.isOpened():
+                    out_video_raw.write(frame)
+                
+                # Append to CSV
+                current_time = datetime.datetime.now().strftime("%H:%M:%S.%f")
+                with open(csv_path, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([global_frame_idx, current_time, phi, theta])
+
+                text = f"Az:{phi:+5.1f} El:{theta:+5.1f}"
+                # Draw text with a black outline for better visibility
+                cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                
+                # Save overlay frame
+                if out_video_overlay.isOpened():
+                    out_video_overlay.write(frame)
+            except Exception as e:
+                pass
+
+        # Calculate and display FPS
+        fps_frame_count += 1
+        global_frame_idx += 1
+        elapsed_time = time.time() - start_time
+        if elapsed_time >= 1.0:
+            fps = fps_frame_count / elapsed_time
+            fps_frame_count = 0
+            start_time = time.time()
+        
+        fps_text = f"FPS: {fps:.1f}"
+        cv2.putText(frame, fps_text, (10, height - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
+        cv2.putText(frame, fps_text, (10, height - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+        # Position windows side-by-side
+        window_name = args.title
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        
+        # Position based on camera number
+        if "Camera 1" in args.title:
+            cv2.moveWindow(window_name, 50, 50)
+        elif "Camera 2" in args.title:
+            cv2.moveWindow(window_name, 500, 50)
+            
+        cv2.imshow(window_name, frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            running = False
+            break
+
+    running = False
+    reader_thread.join(timeout=1.0)
+    if out_video_raw.isOpened():
+        out_video_raw.release()
+    if out_video_overlay.isOpened():
+        out_video_overlay.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,17 @@
+#!/usr/bin/expect -f
+set timeout 20
+set local_file "start_stream_sw.sh"
+set remote_file "start_stream_sw.sh"
+spawn scp $local_file kimchi@192.168.1.172:$remote_file
+expect {
+    "yes/no" { send "yes\r"; exp_continue }
+    "password:" { send "kimchi\r" }
+}
+expect eof
+
+spawn ssh kimchi@192.168.1.172 "chmod +x $remote_file"
+expect {
+    "yes/no" { send "yes\r"; exp_continue }
+    "password:" { send "kimchi\r" }
+}
+expect eof
