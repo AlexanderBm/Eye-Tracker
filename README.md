@@ -26,7 +26,7 @@ This guide explains how to set up the Eye Tracker streaming system from scratch.
 2.  **Run Setup Script**:
     Open PowerShell and run:
     ```powershell
-    .\scripts\setup_client.ps1
+    powershell -ExecutionPolicy Bypass -File .\scripts\setup_client.ps1
     ```
 
 ---
@@ -45,7 +45,7 @@ chmod +x scripts/deploy_server.sh
 ### From Windows
 ```powershell
 # Usage: .\scripts\deploy_server.ps1 <RPI_IP> <USER>
-.\scripts\deploy_server.ps1 192.168.1.2 kimchi
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy_server.ps1 192.168.1.2 kimchi
 ```
 *Note: You will be prompted for the Pi's password twice.*
 
@@ -74,7 +74,7 @@ SSH into the Pi and start the stream, pointing it to your computer's IP:
 
 **On Windows**:
 ```powershell
-.\scripts\run_inference.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\run_inference.ps1
 ```
 
 This will open two windows showing the camera feeds with inference overlays.
