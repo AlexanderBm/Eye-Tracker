@@ -1,7 +1,9 @@
 #!/bin/bash
 # Run GStreamer streams and pipe to Python inference script
 
-MODEL_PATH="models/human_conf0.pt"
+# Default model path
+DEFAULT_MODEL="models/human_conf0.pt"
+MODEL_PATH="${1:-$DEFAULT_MODEL}"
 
 # Check if model exists
 if [ ! -f "$MODEL_PATH" ]; then

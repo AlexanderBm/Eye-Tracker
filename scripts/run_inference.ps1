@@ -1,6 +1,8 @@
 # Run GStreamer streams and pipe to Python inference script on Windows
 
-$ModelPath = "models/human_conf0.pt"
+param (
+    [string]$ModelPath = "models/human_conf0.pt"
+)
 
 if (-not (Test-Path $ModelPath)) {
     Write-Warning "Model not found at $ModelPath"

@@ -113,8 +113,17 @@ python src/inference_pipe.py --input_video path/to/video --data_dir path/to/proc
 ```
 
 **3. Custom Model**
-Use a different model file:
+You can pass the path to a custom model file as an argument to the run script.
+
+**Mac**:
 ```bash
-python src/inference_pipe.py --model models/new_model.pt
+./scripts/run_inference.sh path/to/new_model.pt
 ```
+
+**Windows**:
+```powershell
+.\scripts\run_inference.ps1 -ModelPath path/to/new_model.pt
+```
+
+If you are interested in permanently adjusting the default model, you can do so by editing the top of the `run_inference.sh` or `run_inference.ps1` scripts.
 
