@@ -10,9 +10,23 @@ if (-not (Test-Path $ModelPath)) {
 if (Test-Path "venv\Scripts\python.exe") {
     $PythonCmd = "venv\Scripts\python.exe"
     Write-Host "Using venv python: $PythonCmd"
-} else {
+}
+else {
     $PythonCmd = "python"
     Write-Host "Using system python: $PythonCmd"
+}
+
+# Check for GStreamer
+if (-not (Get-Command "gst-launch-1.0" -ErrorAction SilentlyContinue)) {
+    $GstPath = "C:\Program Files\gstreamer\1.0\msvc_x86_64\bin"
+    if (Test-Path $GstPath) {
+        Write-Host "GStreamer not in PATH. Adding $GstPath"
+        $env:PATH = "$GstPath;$env:PATH"
+    }
+    else {
+        Write-Error "GStreamer not found in PATH or at $GstPath. Please install GStreamer."
+        exit 1
+    }
 }
 
 # Create session directory
