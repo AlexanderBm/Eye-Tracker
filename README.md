@@ -80,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_inference.ps1
 This will open two windows showing the camera feeds with inference overlays.
 Data is saved to `data/collected_data/session_<TIMESTAMP>/`.
 
-## 5. Usage Reference
+## 4. Usage Reference
 
 The core inference script is `src/inference_pipe.py`. It can be run manually for advanced usage or debugging.
 
