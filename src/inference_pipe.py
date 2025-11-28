@@ -57,8 +57,8 @@ import datetime
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--width", type=int, default=400)
-    parser.add_argument("--height", type=int, default=400)
+    parser.add_argument("--width", type=int, default=192)
+    parser.add_argument("--height", type=int, default=192)
     parser.add_argument("--model", type=str, default="models/human_conf0.pt")
     parser.add_argument("--title", type=str, default="Stream")
     parser.add_argument("--flip", type=int, default=None, help="Flip: 0=vertical, 1=horizontal")
