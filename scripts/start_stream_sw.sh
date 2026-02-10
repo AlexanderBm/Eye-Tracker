@@ -15,7 +15,7 @@ killall gst-launch-1.0 2>/dev/null
 # Camera 1 (Eye Left): /dev/video2
 echo "Starting Eye Camera 1 (video2) -> $CLIENT_IP:5000"
 gst-launch-1.0 -v v4l2src device=/dev/video2 ! \
-  image/jpeg,width=400,height=400,framerate=60/1 ! \
+  image/jpeg,width=400,height=400,framerate=200/1 ! \
   jpegdec ! \
   videoconvert ! \
   x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 ! \
@@ -25,7 +25,7 @@ gst-launch-1.0 -v v4l2src device=/dev/video2 ! \
 # Camera 2 (Eye Right): /dev/video4
 echo "Starting Eye Camera 2 (video4) -> $CLIENT_IP:5001"
 gst-launch-1.0 -v v4l2src device=/dev/video4 ! \
-  image/jpeg,width=400,height=400,framerate=60/1 ! \
+  image/jpeg,width=400,height=400,framerate=200/1 ! \
   jpegdec ! \
   videoconvert ! \
   x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 ! \

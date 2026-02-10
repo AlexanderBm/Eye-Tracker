@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import time
 import argparse
+import zmq
+import msgpack
 
 # Define the model class (copied from video_client.py)
 class AzElRegressor128x128(nn.Module):
@@ -66,6 +68,7 @@ def main():
     parser.add_argument("--data_dir", type=str, default="data/collected_data", help="Directory to save data")
     parser.add_argument("--input_video", type=str, default=None, help="Path to input video file (offline mode)")
     parser.add_argument("--headless", action="store_true", help="Run without GUI display")
+    parser.add_argument("--zmq_pub_port", type=int, default=5555, help="ZMQ PUB port for forwarding eye data (0 to disable)")
     args = parser.parse_args()
 
     # Setup data collection
@@ -89,15 +92,15 @@ def main():
     # Note: MJPG is widely supported. For MP4, 'mp4v' or 'avc1' might be needed.
     # Using 'mp4v' for compatibility.
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    # Assuming 60fps as per GStreamer pipeline
+    # Assuming 200fps as per GStreamer pipeline
     
     # Raw video writer
     video_path_raw = os.path.join(args.data_dir, f"video_raw_eye{args.eye}.mp4")
-    out_video_raw = cv2.VideoWriter(video_path_raw, fourcc, 60.0, (args.width, args.height))
+    out_video_raw = cv2.VideoWriter(video_path_raw, fourcc, 200.0, (args.width, args.height))
     
     # Overlay video writer
     video_path_overlay = os.path.join(args.data_dir, f"video_overlay_eye{args.eye}.mp4")
-    out_video_overlay = cv2.VideoWriter(video_path_overlay, fourcc, 60.0, (args.width, args.height))
+    out_video_overlay = cv2.VideoWriter(video_path_overlay, fourcc, 200.0, (args.width, args.height))
 
     width = args.width
     height = args.height
@@ -127,6 +130,18 @@ def main():
     except Exception as e:
         print(f"Failed to initialize model: {e}")
         model = None
+
+    # Setup ZMQ publisher
+    zmq_pub = None
+    zmq_topic = f"eye.{args.eye}"
+    if args.zmq_pub_port > 0:
+        zmq_port = args.zmq_pub_port + args.eye  # eye 0 -> 5555, eye 1 -> 5556
+        zmq_ctx = zmq.Context()
+        zmq_pub = zmq_ctx.socket(zmq.PUB)
+        zmq_pub.bind(f"tcp://*:{zmq_port}")
+        # JPEG encode params for image compression (quality 80 for speed/size balance)
+        zmq_jpeg_params = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+        print(f"ZMQ PUB bound on tcp://*:{zmq_port} (topic: {zmq_topic})")
 
     if not args.input_video:
         print(f"Reading raw video {width}x{height} from stdin...")
@@ -226,11 +241,25 @@ def main():
                 
                 phi, theta = pred[0], pred[1]
                 
-                phi, theta = pred[0], pred[1]
-                
                 # Save data (Clean frame before overlay)
                 if out_video_raw.isOpened():
                     out_video_raw.write(frame)
+                
+                # Publish via ZMQ (before overlay, so subscriber gets clean image)
+                if zmq_pub is not None:
+                    _, jpeg_buf = cv2.imencode('.jpg', frame, zmq_jpeg_params)
+                    payload = msgpack.dumps({
+                        'topic': zmq_topic,
+                        'frame_idx': global_frame_idx,
+                        'timestamp': time.time(),
+                        'az': float(phi),
+                        'el': float(theta),
+                        'image': jpeg_buf.tobytes(),
+                        'width': width,
+                        'height': height,
+                    }, use_bin_type=True)
+                    zmq_pub.send_string(zmq_topic, flags=zmq.SNDMORE)
+                    zmq_pub.send(payload)
                 
                 # Append to CSV
                 current_time = datetime.datetime.now().strftime("%H:%M:%S.%f")
@@ -286,6 +315,9 @@ def main():
         out_video_raw.release()
     if out_video_overlay.isOpened():
         out_video_overlay.release()
+    if zmq_pub is not None:
+        zmq_pub.close()
+        zmq_ctx.term()
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
