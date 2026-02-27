@@ -18,7 +18,16 @@ This guide explains how to set up the Eye Tracker streaming system from scratch.
     ```
     This installs GStreamer (via Homebrew), creates a Python `venv`, and installs dependencies.
 
-### Option B: Windows Setup
+### Option B: Linux Setup
+1.  **Run Setup Script**:
+    ```bash
+    chmod +x scripts/setup_client_linux.sh
+    ./scripts/setup_client_linux.sh
+    ```
+    This installs GStreamer (via apt), creates a Python `venv`, and installs dependencies.
+    For non-Debian/Ubuntu distros, install GStreamer manually then run with `--skip-gstreamer`.
+
+### Option C: Windows Setup
 1.  **Install GStreamer**:
     *   Download the **MSVC 64-bit** installer (Runtime & Development) from [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/download/).
     *   **Important**: Choose "Complete" installation to ensure `gst-launch-1.0` is in your PATH.
