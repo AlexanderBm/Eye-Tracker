@@ -26,10 +26,24 @@ mkdir -p "$SESSION_DIR"
 echo "Saving data to: $SESSION_DIR"
 
 echo "Starting Inference Stream for Camera 1 (Port 5000)..."
-gst-launch-1.0 -q udpsrc port=5000 ! application/x-rtp, payload=96 ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGR,width=400,height=400 ! fdsink | $PYTHON_CMD src/inference_pipe.py --title "Camera 1 (Inference)" --model "$MODEL_PATH" --eye 0 --data_dir "$SESSION_DIR" &
-
+gst-launch-1.0 -v v4l2src device=/dev/video2 ! \
+  image/jpeg,width=192,height=192 ! \
+  jpegdec ! \
+  videoconvert ! \
+  v4l2h264enc extra-controls="controls,repeat_sequence_header=1" ! \
+  'video/x-h264,level=(string)4' ! \
+  rtph264pay config-interval=1 pt=96 ! \
+  udpsink host=$CLIENT_IP port=5000 sync=false &
+  
 echo "Starting Inference Stream for Camera 2 (Port 5001)..."
-gst-launch-1.0 -q udpsrc port=5001 ! application/x-rtp, payload=96 ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGR,width=400,height=400 ! fdsink | $PYTHON_CMD src/inference_pipe.py --title "Camera 2 (Inference)" --model "$MODEL_PATH" --eye 1 --data_dir "$SESSION_DIR" &
-
+gst-launch-1.0 -v v4l2src device=/dev/video4 ! \
+  image/jpeg,width=192,height=192 ! \
+  jpegdec ! \
+  videoconvert ! \
+  v4l2h264enc extra-controls="controls,repeat_sequence_header=1" ! \
+  'video/x-h264,level=(string)4' ! \
+  rtph264pay config-interval=1 pt=96 ! \
+  udpsink host=$CLIENT_IP port=5001 sync=false &
+  
 echo "Inference streams started. Press Ctrl+C to stop."
 wait
